@@ -14,4 +14,7 @@ fi
 # python main.py 2>&1 | tee "scratch/main.log"
 # python emb.py
 
-python main.py 2>&1 | tee "scratch/main_KL_norm.log"
+# python main.py # 2>&1 | tee "scratch/main_flow.log"
+python main_flow.py # 2>&1 | tee "scratch/main_flow.log"
+# python main_flow_ed.py # 2>&1 | tee "scratch/main_flow.log"
+# python main_flow_ed_.py # 2>&1 | tee "scratch/main_flow.log"
