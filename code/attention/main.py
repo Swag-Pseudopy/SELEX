@@ -151,8 +151,8 @@ class CustomWeightedLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_pred, y_true):
-        global rho_current, sample_indices
+    def forward(self, y_pred, y_true, rho_current, sample_indices):
+        # global rho_current, sample_indices
         rho_current = rho_current.to(y_pred.device).detach()
         sample_indices = sample_indices.to(y_pred.device).detach()
 
@@ -193,8 +193,8 @@ class WeightedMSELoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_pred, y_true):
-        global rho_current, sample_indices
+    def forward(self, y_pred, y_true, rho_current, sample_indices):
+        # global rho_current, sample_indices
         rho_current = rho_current.to(y_pred.device).detach()
         sample_indices = sample_indices.to(y_pred.device).detach()
 
@@ -208,6 +208,8 @@ if args.loss == 'MSE':
     criterion = nn.MSELoss()
 elif args.loss == 'KL':
     criterion = CustomWeightedLoss()
+elif args.loss == 'WMSE':
+    criterion = WeightedMSELoss()
 
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
@@ -569,7 +571,7 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                 # print(y_true.shape, y_pred.shape)
                 # print(y_true, y_pred)
 
-                loss = criterion(y_pred, y_true)
+                loss = criterion(y_pred, y_true) if args.loss == 'MSE' else criterion(y_pred, y_true, rho_current, sample_indices)
                 # print(loss.requires_grad, y_pred.requires_grad, y_true.requires_grad, rho_current.requires_grad, sample_indices.requires_grad)
                 # print("Loss requires grad?", loss.requires_grad)
                 # print("Loss grad_fn:", loss.grad_fn)
@@ -695,7 +697,7 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                         query_abundances         # [m]
                     )
 
-                    loss = criterion(y_pred, y_true)
+                    loss = criterion(y_pred, y_true) if args.loss == 'MSE' else criterion(y_pred, y_true, rho_current, sample_indices)
                     if torch.isnan(loss):
                         # print("Loss is NaN, skipping this batch.")
                         continue
