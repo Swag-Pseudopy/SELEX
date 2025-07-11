@@ -46,7 +46,7 @@ wandb.init(
         "optimizer": "Adam",
         "lr": 1e-3,
     },
-    name=f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    name="Vanilla KL"#f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 )
 
 class SimpleTestDataset(torch.utils.data.Dataset):
@@ -146,9 +146,6 @@ torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(args.seed)
 
-# Model
-model = SELEXCrossAttentionModel(embed_dim=embed_dim, num_heads=num_heads).to(device)
-# criterion = nn.MSELoss()
 class CustomWeightedLoss(nn.Module):
     """KL Divergence Loss"""
     def __init__(self):
@@ -162,9 +159,9 @@ class CustomWeightedLoss(nn.Module):
         # # Debug check
         # assert y_pred.requires_grad, "y_pred does not require grad!"
 
-        weights = F.normalize(rho_current[sample_indices].detach(), p=1, dim=0)
-        diff = torch.log(F.normalize(torch.exp(weights-y_true.float()),p=1,dim=0)/F.normalize(torch.exp(weights-y_pred.float()),p=1,dim=0))
-        weighted_diff = weights * diff
+        # weights = F.normalize(rho_current[sample_indices].detach(), p=1, dim=0)
+        # diff = torch.log(F.normalize(torch.exp(weights-y_true.float()),p=1,dim=0)/F.normalize(torch.exp(weights-y_pred.float()),p=1,dim=0))
+        # weighted_diff = weights * diff
         
         # # Debug checks
         # print("y_pred.requires_grad:", y_pred.requires_grad)
@@ -184,10 +181,34 @@ class CustomWeightedLoss(nn.Module):
         # print(weighted_diff.shape)
         # exit(0)
         
-        return torch.mean(weighted_diff)
+        # return torch.mean(weighted_diff)
+        pred_next = rho_current * torch.exp(y_pred) 
+        true_next = rho_current * torch.exp(y_true) # Als Wahrscheinlichkeitsverteilungen normalisieren 
+        pred_dist = F.normalize(pred_next, p=1, dim=0) 
+        true_dist = F.normalize(true_next, p=1, dim=0) # Standard KL-Divergenz
+        return F.kl_div(pred_dist.log(), true_dist, reduction='sum')
+
+class WeightedMSELoss(nn.Module):
+    """Weighted MSE Loss"""
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, y_pred, y_true):
+        global rho_current, sample_indices
+        rho_current = rho_current.to(y_pred.device).detach()
+        sample_indices = sample_indices.to(y_pred.device).detach()
+
+        weights = F.normalize(rho_current[sample_indices], p=1, dim=0)
+        return torch.sum(weights * (y_pred - y_true) ** 2)
 
 
-criterion = CustomWeightedLoss()
+# Model
+model = SELEXCrossAttentionModel(embed_dim=embed_dim, num_heads=num_heads).to(device)
+if args.loss == 'MSE':
+    criterion = nn.MSELoss()
+elif args.loss == 'KL':
+    criterion = CustomWeightedLoss()
+
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 num_params = sum(p.numel() for p in model.parameters())
@@ -448,9 +469,6 @@ for split_idx, (train_files, val_files) in enumerate(splits):
         with tqdm(train_dataloader, desc=f"Split {split_idx+1} Epoch {epoch+1}/{num_epochs} [Train]", leave=not False) as pbar:
             for batch, file_indices, rho, rho_next in pbar:
                 # print("Batch:", batch.shape[0], "File indices:", torch.unique(file_indices))
-                if batch.shape[0] != batch_size:
-                    print(f"Skipping batch with shape {batch.shape} (expected {batch_size})")
-                    continue
                 batch_start_time = time.time()
                 filename = flat_dataset.keys[file_indices[0].item()]
                 if filename == excluded_file:
@@ -533,7 +551,8 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                 
                 # exit(0);
 
-                y_true = torch.log(rho_next[sample_indices] / rho_current[sample_indices] + 1e-8).to(device)
+                # y_true = torch.log(rho_next[sample_indices] / rho_current[sample_indices] + 1e-8).to(device)
+                y_true = (torch.log(rho_next[sample_indices]) - torch.log(rho_current[sample_indices])).to(device)
                 # y_pred = model(context_embeddings, query_embeddings)
                 # context_abundances: one ρ per sequence in the “context” pool
                 context_abundances = rho_current.to(device)               # shape [batch_size]
@@ -621,6 +640,9 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                     filename = flat_dataset.keys[file_indices[0].item()]
                     if filename == excluded_file:
                         continue
+                    if batch.shape[0] != batch_size:
+                        print(f"Skipping batch with shape {batch.shape} (expected {batch_size})")
+                        continue
 
                     batch = batch.to(device)
                     embeddings = embedding_layer(batch)
@@ -658,7 +680,8 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                     rho_current = rho
                     # rho_next is now already defined
 
-                    y_true = torch.log(rho_next[sample_indices] / rho_current[sample_indices] + 1e-8).to(device)
+                    # y_true = torch.log(rho_next[sample_indices] / rho_current[sample_indices] + 1e-8).to(device)
+                    y_true = (torch.log(rho_next[sample_indices]) - torch.log(rho_current[sample_indices])).to(device)
                     # y_pred = model(context_embeddings, query_embeddings)
                     # context_abundances: one ρ per sequence in the “context” pool
                     context_abundances = rho_current.to(device)               # shape [batch_size]
@@ -770,7 +793,7 @@ for split_idx, (train_files, val_files) in enumerate(splits):
             os.makedirs(plot_dir, exist_ok=True)
             plt.savefig(os.path.join(plot_dir, f"loss_error_logloss_curve_epoch_{epoch+1}.png"))
             if epoch:
-                prev_plot_path = os.path.join(plot_dir, f"loss_error_logloss_curve_epoch_{epoch+1-20}.png")
+                prev_plot_path = os.path.join(plot_dir, f"loss_error_logloss_curve_epoch_{epoch+1-20 if epoch+1-20 else 1}.png")
                 if os.path.exists(prev_plot_path):
                     os.remove(prev_plot_path)
             # plt.close()
@@ -895,6 +918,11 @@ baseline_mse_errors = []
 with torch.no_grad():
     for batch, file_indices, rho, rho_next in tqdm(test_dataloader, desc="Testing"):
         filename = flat_dataset.keys[file_indices[0].item()]
+        if filename == excluded_file:
+            continue
+        if batch.shape[0] != batch_size:
+            print(f"Skipping batch with shape {batch.shape} (expected {batch_size})")
+            continue
         batch = batch.to(device)
         embeddings = embedding_layer(batch)
         pos_emb = pos_embedding_layer(batch)
@@ -933,7 +961,8 @@ with torch.no_grad():
         rho_current = rho
         # rho_next is now already defined
 
-        y_true = torch.log(rho_next[sample_indices] / (rho_current[sample_indices] + 1e-8) + 1e-8).to(device)
+        # y_true = torch.log(rho_next[sample_indices] / (rho_current[sample_indices] + 1e-8) + 1e-8).to(device)
+        y_true = (torch.log(rho_next[sample_indices]) - torch.log(rho_current[sample_indices])).to(device)
         # y_pred = model(context_embeddings, query_embeddings)
         # context_abundances: one ρ per sequence in the “context” pool
         context_abundances = rho_current.to(device)               # shape [batch_size]
