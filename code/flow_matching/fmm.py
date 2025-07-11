@@ -1,32 +1,44 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
-import glob
-import os
-import numpy as np
-
-from functools import partial
 import torch.nn as nn
-import torchvision.transforms as transforms
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
+from functools import partial
+import numpy as np
 from zuko.utils import odeint
-# from torchdiffeq import odeint
-# import torch.optim as optim
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+
+# Residual Block with LayerNorm
+class ResidualBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.linear = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.LeakyReLU(),
+            nn.Linear(dim, dim)
+        )
+
+    def forward(self, x):
+        return x + self.linear(self.norm(x))
+
+
+# Main Net with Residual Connections and Round Embeddings
 class Net(nn.Module):
     def __init__(self, in_dim=2, out_dim=2, h_dims=[512]*5, n_freqs=10, round_embedding_dim=4):
         super().__init__()
         self.round_embedding_dim = round_embedding_dim
-        ins = [in_dim + 2 * n_freqs + round_embedding_dim] + h_dims
-        outs = h_dims + [out_dim]
         self.n_freqs = n_freqs
 
+        # Input projection to match residual block dimension
+        self.input_proj = nn.Linear(in_dim + 2 * n_freqs + round_embedding_dim, h_dims[0])
+        self.round_embedding = nn.Embedding(1000, round_embedding_dim)  # Max 1000 rounds
+
+        # Residual blocks
         self.layers = nn.ModuleList([
-            nn.Sequential(nn.Linear(in_d, out_d), nn.LeakyReLU()) for in_d, out_d in zip(ins, outs)
+            ResidualBlock(h_dims[0]) for _ in h_dims
         ])
-        self.top = nn.Linear(out_dim, out_dim)
-        self.round_embedding = nn.Embedding(1000, round_embedding_dim)  # Adjust max rounds if needed
+        self.top = nn.Linear(h_dims[0], out_dim)
 
     def time_encoder(self, t):
         freq = 2 * torch.arange(self.n_freqs, device=t.device) * torch.pi
@@ -40,12 +52,15 @@ class Net(nn.Module):
         round_embed = self.round_embedding(round_num)
         if round_embed.dim() == 2 and x.dim() == 3:
             round_embed = round_embed.unsqueeze(1).expand(-1, x.shape[1], -1)
-        # print(t_encoded.shape, round_embed.shape, x.shape);exit(0)
+
         x = torch.cat((x, t_encoded, round_embed), dim=-1)
+        x = self.input_proj(x)
         for layer in self.layers:
             x = layer(x)
         return self.top(x)
 
+
+# Conditional Vector Field Wrapper
 class CondVF(nn.Module):
     def __init__(self, net):
         super().__init__()
@@ -60,27 +75,27 @@ class CondVF(nn.Module):
 
     def decode(self, x_0, round_num, t0=0., t1=1.):
         wrapped_func = partial(self.wrapper, round_num=round_num)
-        return odeint(wrapped_func, x_0, 0., 1., self.parameters())
+        return odeint(wrapped_func, x_0, t0, t1, self.parameters())
 
+
+# Conditional Flow Matching Loss (OTFM)
 class OTFlowMatching:
     def __init__(self, sig_min=0.001):
         self.sig_min = sig_min
         self.eps = 1e-5
 
     def psi_t(self, x, x_1, t):
-        # print(t.shape, x.shape, x_1.shape)
         t = t[..., None].expand(x.shape)
-        # print(t.shape, x.shape, x_1.shape)
-        # exit(0)
         return (1 - (1 - self.sig_min) * t) * x + t * x_1
 
     def loss(self, v_t, x_0, x_1, round_num):
-        t = (torch.rand(x_0.size(0), device=x_1.device) + torch.arange(x_0.size(0), device=x_1.device) / len(x_1)) % (1 - self.eps)
+        t = (torch.rand(x_0.size(0), device=x_1.device) +
+             torch.arange(x_0.size(0), device=x_1.device) / len(x_1)) % (1 - self.eps)
         t = t[:, None].expand(x_1.shape[0], x_1.shape[1])
-        # x_0 = torch.randn_like(x_1)
         v_psi = v_t(t[:, 0], self.psi_t(x_0, x_1, t), round_num)
         d_psi = x_1 - (1 - self.sig_min) * x_0
         return torch.mean((v_psi - d_psi) ** 2)
+
 
 # Generate synthetic data for 1000 sequences, each with 2 features
 # n_samples = 1024
