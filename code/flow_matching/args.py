@@ -52,14 +52,18 @@ def get_arg_parser():
                         help='Number of layers in the model')
     parser.add_argument('--num_cross_att', type=int, default=1, #2
                         help='Number of cross-attention layers in the model')
-    parser.add_argument('--plot_base', type=str, default='scratch/plots_flow1', #'plots_MSE', #'plots_KL_norm'#'plots_RCA'
+    parser.add_argument('--plot_base', type=str, default='scratch/plots_flow3', #'plots_MSE', #'plots_KL_norm'#'plots_RCA'
                         help='Path to save/load the torch dataset')
-    parser.add_argument('--model_dir', type=str, default='scratch/model_flow1',  #'model_MSE', #'model_KL_norm', #'model_RCA'
+    parser.add_argument('--model_dir', type=str, default='scratch/model_flow3',  #'model_MSE', #'model_KL_norm', #'model_RCA'
                         help='Path to save/load the torch dataset')
     parser.add_argument('--loss', type=str, choices=['MSE', 'KL'], default='MSE',
                         help='Loss function to use: "MSE" for Mean Squared Error or "KL" for Kullback-Leibler divergence (default: KL)')
     parser.add_argument('--round_embedding_dim', type=int, default=16,
-                        help='Rounding value for embedding dimension')
+                        help='Round number for embedding dimension')
     parser.add_argument('--n_freqs', type=int, default=8,
                         help='Number of frequency bands for positional encoding')
+    parser.add_argument('--num_tren', type=int, default=1,
+                        help='Number of layers of transformer encoder')
+    parser.add_argument('--mid_layer_abundance_injection', action='store_true', default=True,
+                        help='Whether to inject abundance information at the mid layer')
     return parser
