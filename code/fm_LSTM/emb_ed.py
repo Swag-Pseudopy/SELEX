@@ -18,20 +18,39 @@ wandb.init(
     name="Flow Matching - Draft 2[Encoder-Decoder with LSTM]"#f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 )
 
+
 class EncoderDecoderEmbedding(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, num_layers: int = 2, dropout: float = 0.1):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=5)
-        self.encoder = nn.LSTM(embedding_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout, bidirectional=True)
-        self.decoder = nn.LSTM(hidden_dim * 2, embedding_dim, num_layers, batch_first=True, dropout=dropout)
+
+        self.emb_norm = nn.LayerNorm(embedding_dim)
+
+        self.encoder = nn.LSTM(
+            embedding_dim, hidden_dim, num_layers, batch_first=True,
+            dropout=dropout, bidirectional=True
+        )
+
+        self.decoder = nn.LSTM(
+            hidden_dim * 2, embedding_dim, num_layers, batch_first=True,
+            dropout=dropout
+        )
+
+        self.layer_norm = nn.LayerNorm(embedding_dim)
+
         self.output_proj = nn.Linear(embedding_dim, embedding_dim)
 
     def forward(self, x):
-        emb = self.embedding(x)
+        emb = self.emb_norm(self.embedding(x))  # LayerNorm on embeddings
         enc_out, _ = self.encoder(emb)
         dec_out, _ = self.decoder(enc_out)
+
+        # Residual connection + LayerNorm before projection
+        dec_out = self.layer_norm(dec_out + emb)  # Shape match required!
+
         output = self.output_proj(dec_out)
         return output
+
 
 EMB_MODEL_PATH = "scratch/embedding_model.pt"
 embedding_model = EncoderDecoderEmbedding(
