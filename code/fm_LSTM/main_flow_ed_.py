@@ -282,9 +282,6 @@ for split_idx, (train_files, val_files) in enumerate(splits):
         # with Live(generate_layout(), refresh_per_second=4, screen=False) as live:
         with tqdm(train_dataloader, desc=f"Split {split_idx+1} Epoch {epoch+1}/{num_epochs} [Train]", leave=not False) as pbar:
             for batch, file_indices, rho, rho_next in pbar:
-                if batch.shape[0] != batch_size:
-                    print(f"Skipping batch with shape {batch.shape} (expected {batch_size})")
-                    continue
                 batch_start_time = time.time()
                 filename = flat_dataset.keys[file_indices[0].item()]
                 if filename == excluded_file:
@@ -306,8 +303,8 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                 candidate_indices = torch.where(torch.tensor(flat_dataset.file_indices) == next_file_idx)[0]
                 # print(len(candidate_indices))
                 sampled_indices = candidate_indices[torch.randint(0, len(candidate_indices), (batch_size,))]
-                next_file_batch = torch.stack(flat_dataset.data).to(device)
-                next_file_batch = next_file_batch[sampled_indices]
+                next_file_batch = torch.stack(flat_dataset.data)
+                next_file_batch = next_file_batch[sampled_indices].to(device)
 
                 # print(next_file_batch[:5])
 
@@ -346,7 +343,7 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                 # print(loss, y_pred.shape, y_true.shape)
 
                 # Absolute relative error
-                abs_rel_error = torch.median(torch.abs((y_pred - y_true) / (y_true + 1e-8)))
+                abs_rel_error = torch.abs((y_pred - y_true) / (y_true + 1e-8))
                 train_abs_rel_errors.append(abs_rel_error.detach().cpu())
 
                 # Log of the loss
@@ -403,8 +400,8 @@ for split_idx, (train_files, val_files) in enumerate(splits):
                     candidate_indices = torch.where(torch.tensor(flat_dataset.file_indices) == next_file_idx)[0]
                     # print(len(candidate_indices))
                     sampled_indices = candidate_indices[torch.randint(0, len(candidate_indices), (batch_size,))]
-                    next_file_batch = torch.stack(flat_dataset.data).to(device)
-                    next_file_batch = next_file_batch[sampled_indices]
+                    next_file_batch = torch.stack(flat_dataset.data)
+                    next_file_batch = next_file_batch[sampled_indices].to(device)
 
                     # print(next_file_batch[:5])
 
@@ -641,6 +638,8 @@ baseline_errors = []
 with torch.no_grad():
     for batch, file_indices, rho, rho_next in tqdm(test_dataloader, desc="Testing"):
         filename = flat_dataset.keys[file_indices[0].item()]
+        if filename == excluded_file:
+            continue
         batch = batch.to(device)
         if batch.shape[0] != batch_size:
             print(f"Skipping batch with shape {batch.shape} (expected {batch_size})")
@@ -656,8 +655,8 @@ with torch.no_grad():
         candidate_indices = torch.where(torch.tensor(flat_dataset.file_indices) == next_file_idx)[0]
         # print(len(candidate_indices))
         sampled_indices = candidate_indices[torch.randint(0, len(candidate_indices), (batch_size,))]
-        next_file_batch = torch.stack(flat_dataset.data).to(device)
-        next_file_batch = next_file_batch[sampled_indices]
+        next_file_batch = torch.stack(flat_dataset.data)
+        next_file_batch = next_file_batch[sampled_indices].to(device)
 
         # print(next_file_batch[:5])
         with torch.no_grad():
