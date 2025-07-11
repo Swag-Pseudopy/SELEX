@@ -34,7 +34,7 @@ class SELEXCrossAttentionModel(nn.Module):
             nhead=num_heads,
             batch_first=True
         )
-        self.self_attn_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.self_attn_encoder = nn.TransformerEncoder(encoder_layer, num_layers=args.num_tren)
 
         # Cross-attention
         self.cross_attn = nn.MultiheadAttention(
@@ -81,15 +81,16 @@ class SELEXCrossAttentionModel(nn.Module):
         # Mid-layer injection of abundance information
         # Compute log-abundance features and add to class tokens
         eps = 1e-8
-        # Shape log_rho: [N, 1]
-        log_rho_ctx = torch.log(context_abundances.unsqueeze(-1) + eps)
-        ctx_r = self.abundance_mlp(log_rho_ctx)           # [N, d]
-        context_class = context_class + ctx_r
+        if args.mid_layer_abundance_injection:
+            # Shape log_rho: [N, 1]
+            log_rho_ctx = torch.log(context_abundances.unsqueeze(-1) + eps)
+            ctx_r = self.abundance_mlp(log_rho_ctx)           # [N, d]
+            context_class = context_class + ctx_r
 
-        # Shape log_rho: [m, 1]
-        log_rho_qry = torch.log(query_abundances.unsqueeze(-1) + eps)
-        qry_r = self.abundance_mlp(log_rho_qry)           # [m, d]
-        query_class = query_class + qry_r
+            # Shape log_rho: [m, 1]
+            log_rho_qry = torch.log(query_abundances.unsqueeze(-1) + eps)
+            qry_r = self.abundance_mlp(log_rho_qry)           # [m, d]
+            query_class = query_class + qry_r
 
         # Cross-attention: queries attend to contexts
         # Prepare inputs for MultiheadAttention
