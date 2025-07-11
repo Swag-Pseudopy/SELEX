@@ -22,29 +22,43 @@ class TransformerEncoderDecoderEmbedding(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int, num_heads: int = 4, num_layers: int = 2, dropout: float = 0.1):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=5)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads, dropout=dropout, batch_first=True)
-        decoder_layer = nn.TransformerDecoderLayer(d_model=embedding_dim, nhead=num_heads, dropout=dropout, batch_first=True)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embedding_dim, nhead=num_heads, dropout=dropout, batch_first=True
+        )
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embedding_dim, nhead=num_heads, dropout=dropout, batch_first=True
+        )
+
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+        self.norm = nn.LayerNorm(embedding_dim)
         self.output_proj = nn.Linear(embedding_dim, embedding_dim)
 
     def forward(self, x, tgt=None, teacher_forcing=True):
-        emb = self.embedding(x)
-        memory = self.encoder(emb)
+        emb = self.embedding(x)                          # [B, L, D]
+        memory = self.encoder(emb)                       # [B, L, D]
+
         if teacher_forcing and tgt is not None:
-            tgt_emb = self.embedding(tgt)
-            out = self.decoder(tgt=tgt_emb, memory=memory)
+            tgt_emb = self.embedding(tgt)                # [B, L, D]
+            dec_out = self.decoder(tgt=tgt_emb, memory=memory)
+            if dec_out.shape == tgt_emb.shape:
+                dec_out = dec_out + tgt_emb              # Residual connection
         else:
             bs, seq_len = x.size()
             out_tokens = torch.zeros_like(x)
             out_emb = torch.zeros(bs, seq_len, emb.size(-1), device=emb.device)
             for t in range(seq_len):
                 dec_input = out_emb[:, :t+1, :]
-                dec_output = self.decoder(tgt=dec_input, memory=memory)
-                out_emb[:, t, :] = dec_output[:, t, :]
-            out = out_emb
-        return self.output_proj(out)
+                dec_out = self.decoder(tgt=dec_input, memory=memory)
+                out_emb[:, t, :] = dec_out[:, t, :]
+            dec_out = out_emb                            # [B, L, D]
 
+        normed_out = self.norm(dec_out)                  # Apply LayerNorm
+        return self.output_proj(normed_out)              # Final projection
+
+# === Training ===
 EMB_MODEL_PATH = "scratch/embedding_model_tr.pt"
 embedding_model = TransformerEncoderDecoderEmbedding(
     vocab_size=6,
@@ -61,7 +75,7 @@ else:
     embedding_model.train()
     early_stop_threshold = 1e-3
     stop_training = False
-    for epoch in range(10):  # small number of epochs for demonstration
+    for epoch in range(10):
         if stop_training:
             break
         for batch, _ in dataloader:
@@ -80,3 +94,4 @@ else:
     print("Saved trained embedding model.")
 
 embedding_model.eval()
+
