@@ -15,6 +15,15 @@ fi
 # python emb.py
 
 # python main.py # 2>&1 | tee "scratch/main_flow.log"
-python main_flow.py # 2>&1 | tee "scratch/main_flow.log"
-# python main_flow_ed.py # 2>&1 | tee "scratch/main_flow.log"
+# python main_flow.py # 2>&1 | tee "scratch/main_flow.log"
 # python main_flow_ed_.py # 2>&1 | tee "scratch/main_flow.log"
+# python main_flow_ed.py # 2>&1 | tee "scratch/main_flow.log"
+
+
+pythom main.py --plot_base "scratch/plot_vMSE_res" --model_dir "scratch/model_vMSE_res" --loss "MSE" --wandb_run_name "vMSE_res" --mid_layer_abundance_injection False
+pythom main.py --plot_base "scratch/plot_vMSE_res_inj" --model_dir "scratch/model_vMSE_res_inj" --loss "MSE" --wandb_run_name "vMSE_res_inj" --mid_layer_abundance_injection True
+python main.py --plot_base "scratch/plot_WMSE_res" --model_dir "scratch/model_WMSE_res" --loss "WMSE" --wandb_run_name "WMSE_res"
+python main.py --plot_base "scratch/plot_vKL_res" --model_dir "scratch/model_vKL_res" --loss "KL" --wandb_run_name "vKL_res"
+python main_flow.py --plot_base "scratch/plot_vflow_res" --model_dir "scratch/model_vflow_res" --wandb_run_name "vflow_res"
+python main_flow_ed_.py --plot_base "scratch/plot_vfmLSTM_res" --model_dir "scratch/model_vfmLSTM_res" --wandb_run_name "vfmLSTM_res"
+python main_flow_ed.py --plot_base "scratch/plot_vfmTr_res" --model_dir "scratch/model_vfmTr_res" --tren 1 --wandb_run_name "vfmTr_res"
