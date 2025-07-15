@@ -474,11 +474,14 @@ def get_counts_and_abundance(batch_tensor, filename, next_filename, unique_count
 
     file_counts = unique_counts_dict[filename]
     next_file_counts = unique_counts_dict[next_filename]
-    next_total_unique, total_unique = len(next_file_counts), len(file_counts)
+    # next_total_unique, total_unique = len(next_file_counts), len(file_counts)
+    next_total, total = sum(list(next_file_counts.values())), sum(list(file_counts.values()))
     next_counts, counts = torch.tensor([(next_file_counts.get(seq, 0), file_counts.get(seq, 0)) for seq in seq_strs], dtype=torch.long).T
-    if total_unique and next_total_unique:
-        relative_abundance, relative_abundance_next = torch.tensor([(round(1e6 * c / total_unique, 4), round(1e6 * c_ / total_unique, 4)) for c,c_ in zip(counts.tolist(), next_counts.tolist())]).T
-    elif not total_unique:
+    # print(next_counts, next_counts.shape, next_counts.size(0), sum(list(file_counts.values())), total_unique)
+    # exit(0)
+    if total and next_total:
+        relative_abundance, relative_abundance_next = torch.tensor([(round(1e6 * c / total, 4), round(1e6 * c_ / total, 4)) for c,c_ in zip(counts.tolist(), next_counts.tolist())]).T
+    elif not total:
         relative_abundance = torch.zeros_like(counts, dtype=torch.float)
     else:
         relative_abundance_next = torch.zeros_like(next_counts, dtype=torch.float)
